@@ -2,6 +2,12 @@
 
 This project is an end-to-end deep learning pipeline for facial emotion recognition using the FER2013 dataset. It uses TensorFlow and Keras to train a Convolutional Neural Network (CNN) that classifies grayscale face images into seven emotions: Angry, Disgust, Fear, Happy, Sad, Surprise, and Neutral.
 
+## Live Demo
+
+Try the deployed Streamlit app here:
+
+`https://human-emotion-nfb45vwbedbxg2nhgr2qzf.streamlit.app/`
+
 ## Project Structure
 
 ```text
