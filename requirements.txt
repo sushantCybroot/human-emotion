@@ -1,0 +1,11 @@
+tensorflow
+keras
+numpy
+opencv-python
+matplotlib
+scikit-learn
+pandas
+kagglehub
+streamlit
+streamlit-webrtc
+av
