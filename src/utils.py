@@ -3,9 +3,7 @@
 from pathlib import Path
 
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import ConfusionMatrixDisplay, classification_report, confusion_matrix
 
 from src.config import CLASS_NAMES, IMAGE_SIZE, PLOTS_DIR, REPORTS_DIR
 
@@ -35,6 +33,8 @@ def load_and_preprocess_image(image_path: str) -> np.ndarray:
 
 def plot_training_history(history):
     """Save training accuracy and loss curves."""
+    import matplotlib.pyplot as plt
+
     ensure_directories()
 
     plt.figure(figsize=(12, 5))
@@ -62,6 +62,9 @@ def plot_training_history(history):
 
 def evaluate_and_save_reports(model, test_generator):
     """Evaluate the trained model and save reports."""
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import ConfusionMatrixDisplay, classification_report, confusion_matrix
+
     ensure_directories()
 
     predictions = model.predict(test_generator, verbose=1)
