@@ -8,4 +8,3 @@ env/
 dataset/
 models/
 outputs/
-emotion_model.h5
