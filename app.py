@@ -17,6 +17,29 @@ REALTIME_STATE = {
     "last_detections": [],
 }
 
+RTC_CONFIGURATION = {
+    "iceServers": [
+        {"urls": ["stun:stun.l.google.com:19302"]},
+        {"urls": ["stun:stun1.l.google.com:19302"]},
+    ]
+}
+
+
+def resize_with_aspect_ratio(frame: np.ndarray, target_long_edge: int = 480):
+    """Resize a frame without distorting portrait or landscape camera input."""
+    height, width = frame.shape[:2]
+    long_edge = max(height, width)
+    if long_edge <= target_long_edge:
+        return frame.copy(), 1.0
+
+    scale = target_long_edge / float(long_edge)
+    resized = cv2.resize(
+        frame,
+        (max(1, int(width * scale)), max(1, int(height * scale))),
+        interpolation=cv2.INTER_AREA,
+    )
+    return resized, scale
+
 
 st.set_page_config(
     page_title="Human Emotion Detection",
@@ -500,29 +523,34 @@ def analyze_frame(frame: np.ndarray, model, face_detector):
 
 def analyze_frame_realtime(frame: np.ndarray, model, face_detector, state):
     """Run a lighter real-time detection pass for smoother webcam performance."""
-    frame = cv2.resize(frame, (480, 270), interpolation=cv2.INTER_AREA)
-    annotated = frame.copy()
+    display_frame, resize_scale = resize_with_aspect_ratio(frame, target_long_edge=480)
+    annotated = display_frame.copy()
 
-    detection_scale = 0.3
+    detection_scale = 0.5
     now = time.perf_counter()
     detect_this_frame = (now - state.last_update_time >= 0.9) or not state.last_detections
 
     if detect_this_frame:
         small_frame = cv2.resize(
-            frame,
-            (int(frame.shape[1] * detection_scale), int(frame.shape[0] * detection_scale)),
+            display_frame,
+            (
+                max(1, int(display_frame.shape[1] * detection_scale)),
+                max(1, int(display_frame.shape[0] * detection_scale)),
+            ),
             interpolation=cv2.INTER_AREA,
         )
         grayscale_small = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
+        grayscale_small = cv2.equalizeHist(grayscale_small)
         faces = face_detector.detectMultiScale(
             grayscale_small,
-            scaleFactor=1.15,
+            scaleFactor=1.1,
             minNeighbors=4,
-            minSize=(20, 20),
+            minSize=(24, 24),
         )
 
         detections = []
-        full_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        full_gray = cv2.cvtColor(display_frame, cv2.COLOR_BGR2GRAY)
+        full_gray = cv2.equalizeHist(full_gray)
         faces = sorted(faces, key=lambda box: box[2] * box[3], reverse=True)[:1]
         for (x, y, w, h) in faces:
             x = int(x / detection_scale)
@@ -778,17 +806,23 @@ def live_webcam_ui():
     )
 
     st.info("Allow camera access in your browser, then press start to begin live detection.")
+    st.caption(
+        "If live camera takes too long to connect on Streamlit Cloud, try Chrome on a normal network. "
+        "Some mobile networks, office Wi-Fi setups, and in-app browsers can block WebRTC."
+    )
 
     st.markdown('<div class="webcam-shell">', unsafe_allow_html=True)
     webrtc_streamer(
         key="emotion-webcam",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=EmotionProcessor,
+        rtc_configuration=RTC_CONFIGURATION,
         media_stream_constraints={
             "video": {
-                "width": {"ideal": 480},
-                "height": {"ideal": 270},
-                "frameRate": {"ideal": 6, "max": 8},
+                "facingMode": "user",
+                "width": {"ideal": 640, "min": 320},
+                "height": {"ideal": 480, "min": 240},
+                "frameRate": {"ideal": 8, "max": 10},
             },
             "audio": False,
         },
@@ -799,11 +833,11 @@ def live_webcam_ui():
             "playsInline": True,
             "controls": False,
             "width": "100%",
-            "height": 360,
+            "height": 420,
             "style": {
                 "width": "100%",
-                "height": "360px",
-                "objectFit": "cover",
+                "height": "420px",
+                "objectFit": "contain",
                 "borderRadius": "20px",
                 "backgroundColor": "#0d1726",
             }
