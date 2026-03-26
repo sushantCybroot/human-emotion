@@ -1,5 +1,10 @@
 import threading
 import time
+import json
+import os
+from base64 import b64encode
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 import av
 import cv2
@@ -474,6 +479,47 @@ def inject_styles():
     )
 
 
+def get_secret_value(key: str):
+    """Read a secret from Streamlit secrets or environment variables."""
+    if key in st.secrets:
+        return st.secrets[key]
+    return os.environ.get(key)
+
+
+@st.cache_data(show_spinner=False, ttl=1800)
+def fetch_twilio_ice_servers(account_sid: str, auth_token: str):
+    """Fetch short-lived TURN/STUN credentials from Twilio."""
+    auth_header = b64encode(f"{account_sid}:{auth_token}".encode("utf-8")).decode("utf-8")
+    request = Request(
+        "https://api.twilio.com/2010-04-01/Accounts/" + account_sid + "/Tokens.json",
+        method="POST",
+        headers={"Authorization": f"Basic {auth_header}"},
+        data=b"",
+    )
+
+    with urlopen(request, timeout=10) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    return payload.get("ice_servers", [])
+
+
+def get_rtc_configuration():
+    """Use Twilio TURN servers when configured, otherwise fall back to public STUN."""
+    account_sid = get_secret_value("TWILIO_ACCOUNT_SID")
+    auth_token = get_secret_value("TWILIO_AUTH_TOKEN")
+
+    if not account_sid or not auth_token:
+        return RTC_CONFIGURATION, False, None
+
+    try:
+        ice_servers = fetch_twilio_ice_servers(account_sid, auth_token)
+        if ice_servers:
+            return {"iceServers": ice_servers}, True, None
+        return RTC_CONFIGURATION, False, "Twilio returned no ICE servers, so STUN fallback is being used."
+    except (URLError, TimeoutError, ValueError, OSError) as exc:
+        return RTC_CONFIGURATION, False, f"TURN setup could not be loaded ({exc}). Using STUN fallback."
+
+
 @st.cache_resource
 def load_artifacts():
     """Load the trained model and Haar cascade once per app session."""
@@ -805,10 +851,17 @@ def live_webcam_ui():
         unsafe_allow_html=True,
     )
 
+    rtc_configuration, using_turn, rtc_warning = get_rtc_configuration()
+
     st.info("Allow camera access in your browser, then press start to begin live detection.")
+    if using_turn:
+        st.success("TURN relay is active for this session, which improves webcam connectivity on Streamlit Cloud.")
+    elif rtc_warning:
+        st.warning(rtc_warning)
     st.caption(
         "If live camera takes too long to connect on Streamlit Cloud, try Chrome on a normal network. "
-        "Some mobile networks, office Wi-Fi setups, and in-app browsers can block WebRTC."
+        "Some mobile networks, office Wi-Fi setups, and in-app browsers can block WebRTC. "
+        "For best cloud reliability, add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Streamlit secrets."
     )
 
     st.markdown('<div class="webcam-shell">', unsafe_allow_html=True)
@@ -816,7 +869,7 @@ def live_webcam_ui():
         key="emotion-webcam",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=EmotionProcessor,
-        rtc_configuration=RTC_CONFIGURATION,
+        rtc_configuration=rtc_configuration,
         media_stream_constraints={
             "video": {
                 "facingMode": "user",
